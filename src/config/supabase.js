@@ -17,7 +17,9 @@ if (!supabaseServiceRoleKey || supabaseServiceRoleKey.toLowerCase().includes('pl
   );
 }
 
+const ws = require("ws");
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  realtime: { transport: ws },
   auth: {
     autoRefreshToken: false,
     persistSession: false,
