@@ -13,6 +13,25 @@ const BLUESKY_ENDPOINTS = [
   'https://api.bsky.app/xrpc/app.bsky.feed.searchPosts',
 ];
 
+const REQUIRED_PHRASES = [
+  'discover weekly',
+  'same songs',
+  'repeat',
+  'algorithm',
+  'recommendation',
+  'stuck',
+  'bored',
+  'new music',
+  'discovery',
+  'suggest',
+  'playlist',
+];
+
+function matchesRequiredPhrase(text) {
+  const lower = (text || '').toLowerCase();
+  return REQUIRED_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
 function mapPost(post) {
   const handle = post.author?.handle;
   const postId = post.uri?.split('/').pop();
@@ -88,8 +107,10 @@ async function scrapeBluesky() {
     }
   }
 
-  logger.info(`bluesky: ${results.length} unique posts within 90-day window`);
-  return results;
+  const filteredResults = results.filter((post) => matchesRequiredPhrase(post.body));
+
+  logger.info(`bluesky: ${filteredResults.length} unique posts within 90-day window`);
+  return filteredResults;
 }
 
 module.exports = { scrapeBluesky };

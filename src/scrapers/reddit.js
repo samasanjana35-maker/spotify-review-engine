@@ -4,7 +4,7 @@ const { isWithin90Days } = require('../utils/dateUtils');
 const logger = require('../utils/logger');
 
 const SUBREDDITS = [
-  'spotify', 'androidapps', 'iphoneapps', 'Music', 'mildlyinfuriating', 'firstworldproblems',
+  'spotify', 'Music', 'WeAreTheMusicMakers', 'ListenToThis', 'ifyoulikeblank',
 ];
 
 const SEARCH_QUERIES = [

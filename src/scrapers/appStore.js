@@ -8,7 +8,7 @@ const COUNTRIES = [
   'it', 'nl', 'se', 'no', 'dk', 'fi', 'pl', 'ru', 'jp', 'kr',
   'sg', 'ph', 'id', 'th', 'za', 'ng', 'ar', 'co', 'cl', 'pt',
 ];
-const PAGES_NEEDED = 3;
+const PAGES_NEEDED = 5;
 const MAX_PER_COUNTRY = PAGES_NEEDED * 50;
 
 function mapReview(review, country) {
@@ -45,11 +45,11 @@ async function fetchCountryReviews(country) {
         break;
       }
 
-      reviews.push(...pageReviews);
+      reviews.push(...pageReviews.filter((review) => review.score <= 2));
     }
   }
 
-  return reviews.slice(0, MAX_PER_COUNTRY);
+  return reviews.filter((review) => review.score <= 2).slice(0, MAX_PER_COUNTRY);
 }
 
 async function scrapeAppStore() {

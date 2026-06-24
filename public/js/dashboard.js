@@ -159,12 +159,27 @@ function renderSourceBars(sources) {
   Object.entries(SOURCE_META).forEach(([key, meta]) => {
     const raw = sources?.[key]?.raw || 0;
     const filtered = sources?.[key]?.filtered || 0;
-    const visualPct = SOURCE_VISUAL_BAR_WIDTH[key] ?? 0;
-    const hasFill = visualPct > 0;
+    const isForumsEmpty = key === 'forums' && raw === 0 && filtered === 0;
     const iconClass = meta.isSvg ? 'source-icon source-icon-svg' : 'source-icon';
 
     const row = document.createElement('div');
     row.className = 'source-row';
+
+    if (isForumsEmpty) {
+      row.innerHTML = `
+        <div class="source-label">
+          <span class="${iconClass}">${meta.icon}</span>
+          ${meta.label}
+        </div>
+        <div class="source-bar-wrap"></div>
+        <div class="source-counts" style="color: #b3b3b3;">Coming Soon</div>
+      `;
+      container.appendChild(row);
+      return;
+    }
+
+    const visualPct = SOURCE_VISUAL_BAR_WIDTH[key] ?? 0;
+    const hasFill = visualPct > 0;
     row.innerHTML = `
       <div class="source-label">
         <span class="${iconClass}">${meta.icon}</span>
