@@ -172,8 +172,8 @@ function renderSourceBars(sources) {
       return;
     }
 
-    const barWidth = raw > 0 ? Math.round((filtered / raw) * 100) : 0;
-    const hasFill = barWidth > 0;
+    const barWidth = raw > 0 ? Math.max(2, Math.round((filtered / raw) * 100)) : 0;
+    const hasFill = filtered > 0;
     row.innerHTML = `
       <div class="source-label">
         <span class="${iconClass}">${meta.icon}</span>
