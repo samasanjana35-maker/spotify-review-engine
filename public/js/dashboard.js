@@ -220,6 +220,13 @@ function renderQuestionCards(analysis) {
     return;
   }
 
+  console.log('opportunity check:', analysis.q1?.opportunity);
+  console.log('competitive intel check:', analysis.competitiveIntel || analysis.q6?.competitiveIntel);
+
+  if (!analysis.competitiveIntel && analysis.q6?.competitiveIntel) {
+    analysis.competitiveIntel = analysis.q6.competitiveIntel;
+  }
+
   for (let i = 1; i <= 6; i++) {
     const key = `q${i}`;
     const q = analysis[key];
@@ -255,8 +262,8 @@ function renderQuestionCards(analysis) {
         }).join('')}
       </div>
       ${q.opportunity ? `
-<div style="margin-top: 16px; padding: 12px 16px; background: rgba(29, 185, 84, 0.08); border-left: 3px solid #1DB954; border-radius: 4px;">
-  <div style="color: #1DB954; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">💡 PRODUCT OPPORTUNITY</div>
+<div style="margin-top: 20px; padding: 14px 16px; background: rgba(29, 185, 84, 0.08); border-left: 3px solid #1DB954; border-radius: 6px;">
+  <div style="color: #1DB954; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px;">💡 Product Opportunity</div>
   <div style="color: #e0e0e0; font-size: 14px; line-height: 1.6;">${q.opportunity}</div>
 </div>
 ` : ''}
@@ -266,18 +273,10 @@ function renderQuestionCards(analysis) {
 
   initCardObserver();
 
-  // Render Competitive Intelligence section
-  const compIntel = analysis.competitiveIntel || analysis.q6?.competitiveIntel;
-  const compSection = document.getElementById('competitive-intel-section');
-  const compList = document.getElementById('competitive-intel-list');
-
-  if (compSection && compList) {
-    compSection.style.display = 'none';
-    compList.innerHTML = '';
-  }
-
+  // Render Competitive Intelligence
+  const compIntel = analysis.competitiveIntel;
   if (compIntel) {
-    const competitorNames = {
+    const nameMap = {
       apple_music: 'Apple Music',
       tidal: 'Tidal',
       qobuz: 'Qobuz',
@@ -286,25 +285,27 @@ function renderQuestionCards(analysis) {
       lastfm: 'Last.fm',
     };
 
-    const sorted = Object.entries(compIntel)
-      .filter(([key, count]) => count > 0)
+    const entries = Object.entries(compIntel)
+      .filter(([, count]) => count > 0)
       .sort((a, b) => b[1] - a[1]);
 
-    if (sorted.length > 0) {
-      const rows = sorted.map(([key, count]) => `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #282828;">
-        <span style="color: #e0e0e0; font-size: 15px;">${competitorNames[key]}</span>
-        <span style="color: #1DB954; font-weight: 700; font-size: 15px;">${count} mention${count !== 1 ? 's' : ''}</span>
+    const section = document.getElementById('competitive-intel-section');
+    const list = document.getElementById('competitive-intel-list');
+
+    if (section && list && entries.length > 0) {
+      list.innerHTML = entries.map(([key, count]) => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #282828;">
+        <span style="color:#e0e0e0; font-size:15px;">${nameMap[key] || key}</span>
+        <span style="color:#1DB954; font-weight:700; font-size:15px;">${count} mention${count !== 1 ? 's' : ''}</span>
       </div>
     `).join('');
-
-      const section = document.getElementById('competitive-intel-section');
-      const list = document.getElementById('competitive-intel-list');
-      if (section && list) {
-        list.innerHTML = rows;
-        section.style.display = 'block';
-      }
+      section.style.display = 'block';
     }
+  } else {
+    const section = document.getElementById('competitive-intel-section');
+    const list = document.getElementById('competitive-intel-list');
+    if (section) section.style.display = 'none';
+    if (list) list.innerHTML = '';
   }
 }
 
