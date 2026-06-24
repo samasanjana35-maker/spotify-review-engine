@@ -46,6 +46,7 @@ function prepareReviewsForAnalysis(reviews) {
 function isCacheValid(analysis, scrapeRunId) {
   if (!analysis) return false;
   if (analysis.scrape_run_id !== scrapeRunId) return false;
+  if (!analysis.q1?.opportunity) return false;
 
   const createdAt = new Date(analysis.created_at).getTime();
   const age = Date.now() - createdAt;
@@ -62,6 +63,7 @@ function formatCachedResult(analysis) {
     q5: analysis.q5,
     q6: analysis.q6,
     summary: analysis.summary,
+    competitiveIntel: analysis.q6?.competitiveIntel || null,
     reviewCountAnalyzed: analysis.review_count_analyzed,
     modelUsed: analysis.model_used,
     cached: true,
@@ -91,14 +93,36 @@ INSTRUCTIONS:
 - Assign a severity rating (high, medium, or low) based on how frequently and intensely the issue appears.
 - Return ONLY valid JSON with no markdown fences or extra text.
 
+QUANTIFICATION REQUIREMENT: For each question, count how many of the provided reviews explicitly mention that theme. Include the count in your answer using this format: "X of Y reviews (Z%) mention this." Count carefully by reading each review.
+
+OPPORTUNITY REQUIREMENT: For each question, add an "opportunity" field with ONE specific, concrete feature or product change Spotify could make to address this finding. Be specific — name the feature, describe what it does in 1-2 sentences. Not vague suggestions like "improve the algorithm" — specific ones like "Add an explicit 'I'm done with this artist' button that removes them from recommendations for 90 days."
+
+COMPETITIVE INTEL REQUIREMENT: Count how many reviews mention each competitor by name. Search for: Apple Music, Tidal, Qobuz, Deezer, YouTube Music, Last.fm. Add this to your JSON response:
+"competitiveIntel": {
+  "apple_music": <count>,
+  "tidal": <count>,
+  "qobuz": <count>,
+  "deezer": <count>,
+  "youtube_music": <count>,
+  "lastfm": <count>
+}
+
 Return this exact JSON structure:
 {
-  "q1": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
-  "q2": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
-  "q3": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
-  "q4": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
-  "q5": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
-  "q6": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low" },
+  "q1": { "answer": "...(include count: 'X of Y reviews mention this theme')...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "One specific feature Spotify could build to fix this. Example: Add a Taste Reset button that clears listening history so the algorithm starts fresh recommendations." },
+  "q2": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
+  "q3": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
+  "q4": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
+  "q5": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
+  "q6": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
+  "competitiveIntel": {
+    "apple_music": 0,
+    "tidal": 0,
+    "qobuz": 0,
+    "deezer": 0,
+    "youtube_music": 0,
+    "lastfm": 0
+  },
   "summary": "2-3 sentence overall summary of the main discovery problem",
   "reviewCountAnalyzed": ${formattedReviews.length}
 }`;
@@ -190,13 +214,18 @@ async function analyzeReviews(scrapeRunId) {
   results.reviewCountAnalyzed = formattedReviews.length;
 
   const model = process.env.CLAUDE_MODEL || env.claudeModel;
+  const q6WithIntel = {
+    ...results.q6,
+    competitiveIntel: results.competitiveIntel || null,
+  };
+
   const saved = await saveAnalysisResults(scrapeRunId, {
     q1: results.q1,
     q2: results.q2,
     q3: results.q3,
     q4: results.q4,
     q5: results.q5,
-    q6: results.q6,
+    q6: q6WithIntel,
     summary: results.summary,
     reviewCountAnalyzed: results.reviewCountAnalyzed,
     modelUsed: model,
@@ -213,6 +242,7 @@ async function analyzeReviews(scrapeRunId) {
     q5: saved.q5,
     q6: saved.q6,
     summary: saved.summary,
+    competitiveIntel: results.competitiveIntel || saved.q6?.competitiveIntel || null,
     reviewCountAnalyzed: saved.review_count_analyzed,
     modelUsed: saved.model_used,
     cached: false,

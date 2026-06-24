@@ -29,6 +29,15 @@ const PILL_CLASS = {
   'Community Forums': 'pill-forums',
 };
 
+const COMPETITOR_LABELS = {
+  apple_music: 'Apple Music',
+  tidal: 'Tidal',
+  qobuz: 'Qobuz',
+  deezer: 'Deezer',
+  youtube_music: 'YouTube Music',
+  lastfm: 'Last.fm',
+};
+
 let isScraping = false;
 let pollTimer = null;
 let activePollRunId = null;
@@ -254,6 +263,12 @@ function renderQuestionCards(analysis) {
           `;
         }).join('')}
       </div>
+      ${q.opportunity ? `
+      <div class="opportunity-block" style="margin-top: 16px; padding: 12px 16px; background: rgba(29, 185, 84, 0.1); border-left: 3px solid #1DB954; border-radius: 4px;">
+        <span style="color: #1DB954; font-size: 11px; font-weight: 700; letter-spacing: 1px;">💡 PRODUCT OPPORTUNITY</span>
+        <p style="color: #e0e0e0; margin: 6px 0 0 0; font-size: 14px; line-height: 1.5;">${q.opportunity}</p>
+      </div>
+      ` : ''}
     `;
     grid.appendChild(card);
   }
@@ -261,11 +276,49 @@ function renderQuestionCards(analysis) {
   initCardObserver();
 }
 
+function getCompetitiveIntel(analysis) {
+  return analysis?.competitiveIntel || analysis?.q6?.competitiveIntel || null;
+}
+
+function renderCompetitiveIntel(analysis) {
+  const section = document.getElementById('competitive-intel-section');
+  const list = document.getElementById('competitive-intel-list');
+  const intel = getCompetitiveIntel(analysis);
+
+  if (!section || !list) return;
+
+  if (!intel) {
+    section.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
+  const rows = Object.entries(COMPETITOR_LABELS)
+    .map(([key, name]) => ({ key, name, count: intel[key] || 0 }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  if (rows.length === 0) {
+    section.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
+  section.style.display = 'block';
+  list.innerHTML = rows.map(({ name, count }) => `
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #282828;">
+      <span style="color: #e0e0e0; font-size: 14px;">${name}</span>
+      <span style="color: #1DB954; font-weight: 700;">${count} mention${count !== 1 ? 's' : ''}</span>
+    </div>
+  `).join('');
+}
+
 function renderDashboard(data) {
   renderStatsMeta(data);
   renderSourceBars(data.stats?.sources);
   renderSummary(data.analysis);
   renderQuestionCards(data.analysis);
+  renderCompetitiveIntel(data.analysis);
   showDashboard();
 }
 
