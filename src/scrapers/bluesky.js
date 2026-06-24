@@ -3,7 +3,7 @@ const { isWithin90Days } = require('../utils/dateUtils');
 const logger = require('../utils/logger');
 
 const SEARCH_QUERIES = [
-  'spotify algorithm stuck', 'spotify same songs repeat', 'spotify recommend new music', 'spotify discover weekly broken',
+  'spotify music', 'spotify same songs repeat', 'spotify app', 'spotify discover weekly broken',
   'spotify recommendations algorithm',
   'spotify same songs repeat',
 ];
