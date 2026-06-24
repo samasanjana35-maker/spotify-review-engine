@@ -46,7 +46,11 @@ function prepareReviewsForAnalysis(reviews) {
 function isCacheValid(analysis, scrapeRunId) {
   if (!analysis) return false;
   if (analysis.scrape_run_id !== scrapeRunId) return false;
-  if (!analysis.q1?.opportunity) return false;
+
+  // If cached analysis doesn't have opportunity fields, force regeneration
+  if (analysis.q1 && !analysis.q1.opportunity) {
+    return false;
+  }
 
   const createdAt = new Date(analysis.created_at).getTime();
   const age = Date.now() - createdAt;
@@ -93,23 +97,15 @@ INSTRUCTIONS:
 - Assign a severity rating (high, medium, or low) based on how frequently and intensely the issue appears.
 - Return ONLY valid JSON with no markdown fences or extra text.
 
-QUANTIFICATION REQUIREMENT: For each question, count how many of the provided reviews explicitly mention that theme. Include the count in your answer using this format: "X of Y reviews (Z%) mention this." Count carefully by reading each review.
+OPPORTUNITY REQUIREMENT: For every question Q1–Q6, add an "opportunity" field in your JSON response. This must be ONE specific, concrete product feature Spotify could build to fix the problem you identified. Do NOT write vague suggestions like "improve the algorithm." Write the feature name and what it does in 1–2 sentences. Examples of the level of specificity required: "Add a Taste Reset button that wipes listening history so the algorithm starts fresh" or "Launch an AI Music Filter toggle in settings that removes all AI-generated tracks from every playlist and radio station."
 
-OPPORTUNITY REQUIREMENT: For each question, add an "opportunity" field with ONE specific, concrete feature or product change Spotify could make to address this finding. Be specific — name the feature, describe what it does in 1-2 sentences. Not vague suggestions like "improve the algorithm" — specific ones like "Add an explicit 'I'm done with this artist' button that removes them from recommendations for 90 days."
+QUANTIFICATION REQUIREMENT: You are already including review counts in your answers — continue doing this. For every question, your answer must include "X of Y reviews (Z%)" where X is the number of reviews that explicitly mention the theme, Y is the total number of reviews provided, and Z is X/Y × 100 rounded to one decimal place. Count carefully by reading each review individually.
 
-COMPETITIVE INTEL REQUIREMENT: Count how many reviews mention each competitor by name. Search for: Apple Music, Tidal, Qobuz, Deezer, YouTube Music, Last.fm. Add this to your JSON response:
-"competitiveIntel": {
-  "apple_music": <count>,
-  "tidal": <count>,
-  "qobuz": <count>,
-  "deezer": <count>,
-  "youtube_music": <count>,
-  "lastfm": <count>
-}
+COMPETITIVE INTEL REQUIREMENT: Read every review and count how many times each of these competitors is mentioned by name: Apple Music, Tidal, Qobuz, Deezer, YouTube Music, Last.fm. A mention means the review explicitly names that service. Put the counts in the "competitiveIntel" object in your JSON. Set counts to 0 if not mentioned.
 
-Return this exact JSON structure:
+Return your response as valid JSON with this exact structure:
 {
-  "q1": { "answer": "...(include count: 'X of Y reviews mention this theme')...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "One specific feature Spotify could build to fix this. Example: Add a Taste Reset button that clears listening history so the algorithm starts fresh recommendations." },
+  "q1": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
   "q2": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
   "q3": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
   "q4": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
@@ -179,14 +175,18 @@ async function analyzeReviews(scrapeRunId) {
   lastCallWasCacheHit = false;
 
   const latestAnalysis = await getLatestAnalysis();
-  if (isCacheValid(latestAnalysis, scrapeRunId)) {
+  if (latestAnalysis && latestAnalysis.q1 && !latestAnalysis.q1.opportunity) {
+    logger.info('Cached analysis missing opportunity fields — forcing regeneration');
+  } else if (isCacheValid(latestAnalysis, scrapeRunId)) {
     logger.info(`Returning cached analysis for scrape run ${scrapeRunId} (< 24h old)`);
     lastCallWasCacheHit = true;
     return formatCachedResult(latestAnalysis);
   }
 
   const runAnalysis = await getAnalysisForScrapeRun(scrapeRunId);
-  if (isCacheValid(runAnalysis, scrapeRunId)) {
+  if (runAnalysis && runAnalysis.q1 && !runAnalysis.q1.opportunity) {
+    logger.info('Run analysis missing opportunity fields — forcing regeneration');
+  } else if (isCacheValid(runAnalysis, scrapeRunId)) {
     logger.info(`Returning cached analysis for scrape run ${scrapeRunId} (< 24h old)`);
     lastCallWasCacheHit = true;
     return formatCachedResult(runAnalysis);
