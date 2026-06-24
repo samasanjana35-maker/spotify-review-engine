@@ -22,7 +22,6 @@ const REQUIRED_PHRASES = [
   'stuck',
   'bored',
   'new music',
-  'discovery',
   'suggest',
   'playlist',
   'tired of',
