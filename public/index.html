@@ -78,7 +78,15 @@
         </div>
       </section>
 
-      <button id="scrape-btn" class="scrape-btn btn-pulse" type="button">Scan Reviews</button>
+      <div class="scrape-action-wrap">
+        <button id="scrape-btn" class="scrape-btn btn-pulse" type="button">Scan Reviews</button>
+        <div id="scan-progress-wrap" class="scan-progress-wrap hidden" style="margin-top: 0.75rem;">
+          <div class="scan-progress-track" style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+            <div id="scan-progress-fill" class="scan-progress-fill" style="width: 0%; height: 100%; background: #1DB954; border-radius: 4px; transition: width 0.6s ease-out;"></div>
+          </div>
+          <p id="scan-progress-status" class="scan-progress-status" style="margin: 0.5rem 0 0; font-size: 0.85rem; color: #b3b3b3; text-align: center;">Connecting to sources...</p>
+        </div>
+      </div>
 
       <section class="source-section glass-card">
         <h2 class="section-title">Review Sources</h2>

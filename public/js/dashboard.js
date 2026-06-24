@@ -41,6 +41,17 @@ let isScraping = false;
 let pollTimer = null;
 let activePollRunId = null;
 let cardObserver = null;
+let progressInterval = null;
+let currentStageIndex = 0;
+
+const SCAN_STAGES = [
+  { pct: 15, text: 'Connecting to sources...' },
+  { pct: 35, text: 'Scraping App Store & Play Store...' },
+  { pct: 55, text: 'Scraping Reddit & Bluesky...' },
+  { pct: 75, text: 'Filtering relevant reviews...' },
+  { pct: 90, text: 'Running AI analysis...' },
+  { pct: 99, text: 'Finalizing results...' },
+];
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -166,15 +177,6 @@ function renderSourceBars(sources) {
     row.className = 'source-row';
 
     if (isForumsEmpty) {
-      row.innerHTML = `
-        <div class="source-label">
-          <span class="${iconClass}">${meta.icon}</span>
-          ${meta.label}
-        </div>
-        <div class="source-bar-wrap"></div>
-        <div class="source-counts" style="color: #b3b3b3;">Coming Soon</div>
-      `;
-      container.appendChild(row);
       return;
     }
 
@@ -294,6 +296,63 @@ async function refreshDashboardAfterScrape() {
   }
 }
 
+function updateScanProgress(pct, text) {
+  const fill = document.getElementById('scan-progress-fill');
+  const status = document.getElementById('scan-progress-status');
+  if (fill) fill.style.width = `${pct}%`;
+  if (status) status.textContent = text;
+}
+
+function stopScanProgress() {
+  if (progressInterval) {
+    clearInterval(progressInterval);
+    progressInterval = null;
+  }
+}
+
+function startScanProgress() {
+  const btn = document.getElementById('scrape-btn');
+  const wrap = document.getElementById('scan-progress-wrap');
+
+  btn.disabled = true;
+  btn.classList.remove('btn-pulse', 'scraping', 'complete', 'analyzing');
+  wrap.classList.remove('hidden');
+
+  currentStageIndex = 0;
+  updateScanProgress(0, SCAN_STAGES[0].text);
+
+  stopScanProgress();
+  progressInterval = setInterval(() => {
+    if (currentStageIndex < SCAN_STAGES.length - 1) {
+      currentStageIndex += 1;
+      const stage = SCAN_STAGES[currentStageIndex];
+      updateScanProgress(stage.pct, stage.text);
+    }
+  }, 3500);
+}
+
+function hideScanProgress() {
+  stopScanProgress();
+  const wrap = document.getElementById('scan-progress-wrap');
+  if (wrap) wrap.classList.add('hidden');
+  updateScanProgress(0, SCAN_STAGES[0].text);
+  currentStageIndex = 0;
+}
+
+function syncProgressToPhase(phase) {
+  if (phase === 'analyzing' && currentStageIndex < 4) {
+    currentStageIndex = 4;
+    const stage = SCAN_STAGES[4];
+    updateScanProgress(stage.pct, stage.text);
+  }
+}
+
+async function finishScanProgress() {
+  stopScanProgress();
+  updateScanProgress(100, 'Complete! Loading dashboard...');
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+
 function setScrapeButtonState(state) {
   const btn = document.getElementById('scrape-btn');
   if (state === 'idle') {
@@ -301,21 +360,7 @@ function setScrapeButtonState(state) {
     btn.innerHTML = 'Scan Reviews';
     btn.classList.remove('scraping', 'complete', 'analyzing');
     btn.classList.add('btn-pulse');
-  } else if (state === 'scraping') {
-    btn.disabled = true;
-    btn.classList.add('scraping');
-    btn.classList.remove('complete', 'analyzing', 'btn-pulse');
-    btn.innerHTML = '<span class="spinner"></span> Scanning reviews...';
-  } else if (state === 'analyzing') {
-    btn.disabled = true;
-    btn.classList.add('analyzing');
-    btn.classList.remove('complete', 'btn-pulse');
-    btn.innerHTML = '<span class="spinner"></span> 🧠 Analyzing with Claude AI...';
-  } else if (state === 'complete') {
-    btn.disabled = true;
-    btn.classList.add('complete');
-    btn.classList.remove('analyzing', 'btn-pulse');
-    btn.innerHTML = '✅ Scrape complete! Refreshing...';
+    hideScanProgress();
   }
 }
 
@@ -336,9 +381,7 @@ async function pollOnce(runId) {
   const response = await API.getScrapeStatus(runId);
 
   if (response.phase === 'analyzing') {
-    setScrapeButtonState('analyzing');
-  } else if (response.isRunning) {
-    setScrapeButtonState('scraping');
+    syncProgressToPhase('analyzing');
   }
 
   return isPipelineComplete(response);
@@ -359,7 +402,7 @@ function startPolling(runId) {
       const done = await pollOnce(runId);
       if (done) {
         stopPolling();
-        setScrapeButtonState('complete');
+        await finishScanProgress();
         await refreshDashboardAfterScrape();
         isScraping = false;
         setScrapeButtonState('idle');
@@ -369,6 +412,7 @@ function startPolling(runId) {
     } catch (err) {
       stopPolling();
       isScraping = false;
+      hideScanProgress();
       setScrapeButtonState('idle');
       showError('Lost connection while scraping. Check server and try again.');
     }
@@ -381,13 +425,14 @@ async function handleScrapeClick() {
   if (isScraping) return;
 
   isScraping = true;
-  setScrapeButtonState('scraping');
+  startScanProgress();
 
   try {
     const { scrapeRunId } = await API.startScrape('manual');
     startPolling(scrapeRunId);
   } catch {
     isScraping = false;
+    hideScanProgress();
     setScrapeButtonState('idle');
     showError('Failed to start scrape. Please try again.');
   }

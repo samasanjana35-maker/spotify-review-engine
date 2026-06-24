@@ -25,6 +25,8 @@ const REQUIRED_PHRASES = [
   'discovery',
   'suggest',
   'playlist',
+  'tired of',
+  'find new',
 ];
 
 function matchesRequiredPhrase(text) {
@@ -92,6 +94,7 @@ async function scrapeBluesky() {
         const body = mapped.body?.trim();
 
         if (!body) continue;
+        if (!matchesRequiredPhrase(body)) continue;
 
         const reviewDate = new Date(mapped.review_date);
         if (!isWithin90Days(reviewDate)) continue;
