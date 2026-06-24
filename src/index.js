@@ -83,7 +83,7 @@ app.listen(PORT, async () => {
     logger.info('✅ Supabase connected — database ready');
   } catch (err) {
     logger.error(`❌ Supabase connection failed: ${err.message}`);
-    process.exit(1);
+    logger.warn("⚠️ Starting without Supabase — will retry on requests");
   }
 
   startCronJob();
