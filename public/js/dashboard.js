@@ -37,15 +37,6 @@ const PILL_CLASS = {
   'Community Forums':'pill-forums',
 };
 
-// ── Trend chart colours per source ──────────────────────────────────────────
-const SOURCE_COLORS = {
-  app_store:  { border: '#1DB954', bg: 'rgba(29,185,84,0.15)'  },
-  play_store: { border: '#34A853', bg: 'rgba(52,168,83,0.15)'  },
-  reddit:     { border: '#FF4500', bg: 'rgba(255,69,0,0.15)'   },
-  forums:     { border: '#1185FE', bg: 'rgba(17,133,254,0.15)' },
-  bluesky:    { border: '#b3b3b3', bg: 'rgba(179,179,179,0.1)' },
-};
-
 // ── Segment matrix labels ────────────────────────────────────────────────────
 const SEGMENT_ROWS = [
   { key: 'free_user',          label: 'Free-tier users'        },
@@ -75,9 +66,6 @@ let activePollRunId = null;
 let cardObserver = null;
 let progressInterval = null;
 let currentStageIndex = 0;
-let trendChartInstance = null;
-let fullTrendData = null;   // stored for date range filtering
-
 const SCAN_STAGES = [
   { pct: 15, text: 'Connecting to sources...' },
   { pct: 30, text: 'Scraping App Store & Play Store...' },
@@ -182,108 +170,6 @@ function renderSourceBars(sources) {
       bar.style.width = `${bar.dataset.width}%`;
     });
   }));
-}
-
-// ── UPGRADE 4: Trend chart ────────────────────────────────────────────────────
-
-function sliceTrendData(trend, monthsBack) {
-  if (!trend || !trend.labels) return trend;
-  if (monthsBack === 0) return trend; // all time
-
-  const sliceFrom = Math.max(0, trend.labels.length - monthsBack);
-  return {
-    labels: trend.labels.slice(sliceFrom),
-    datasets: trend.datasets.map((ds) => ({
-      ...ds,
-      data: ds.data.slice(sliceFrom),
-    })),
-  };
-}
-
-function renderTrendChart(trend, monthsBack = 12) {
-  const canvas = document.getElementById('trend-chart');
-  if (!canvas) return;
-
-  const data = sliceTrendData(trend, monthsBack);
-  if (!data || !data.labels || data.labels.length === 0) {
-    canvas.parentElement.innerHTML = '<p style="color:#b3b3b3;text-align:center;padding:40px 0;font-size:13px;">No trend data yet — run a scan to populate the chart.</p>';
-    return;
-  }
-
-  // Format labels: "Jan 2024"
-  const labelsFmt = data.labels.map((m) => {
-    const [yr, mo] = m.split('-');
-    return new Date(parseInt(yr), parseInt(mo) - 1, 1)
-      .toLocaleString('en-US', { month: 'short', year: '2-digit' });
-  });
-
-  const chartDatasets = data.datasets.map((ds) => {
-    const color = SOURCE_COLORS[ds.source] || { border: '#888', bg: 'rgba(136,136,136,0.1)' };
-    return {
-      label: ds.label,
-      data: ds.data,
-      borderColor: color.border,
-      backgroundColor: color.bg,
-      fill: true,
-      tension: 0.4,
-      pointRadius: 3,
-      pointHoverRadius: 5,
-    };
-  });
-
-  if (trendChartInstance) {
-    trendChartInstance.data.labels = labelsFmt;
-    trendChartInstance.data.datasets = chartDatasets;
-    trendChartInstance.update('active');
-    return;
-  }
-
-  trendChartInstance = new Chart(canvas, {
-    type: 'line',
-    data: { labels: labelsFmt, datasets: chartDatasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 600 },
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { color: '#b3b3b3', font: { size: 11 }, boxWidth: 12, padding: 16 },
-        },
-        tooltip: {
-          backgroundColor: '#181818',
-          titleColor: '#e0e0e0',
-          bodyColor: '#b3b3b3',
-          borderColor: '#282828',
-          borderWidth: 1,
-        },
-      },
-      scales: {
-        x: {
-          ticks: { color: '#b3b3b3', font: { size: 11 } },
-          grid: { color: 'rgba(255,255,255,0.05)' },
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: '#b3b3b3', font: { size: 11 }, precision: 0 },
-          grid: { color: 'rgba(255,255,255,0.05)' },
-        },
-      },
-    },
-  });
-}
-
-function initDateRangeFilter(trend) {
-  const btns = document.querySelectorAll('.range-btn');
-  btns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      btns.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      const months = parseInt(btn.dataset.months, 10);
-      renderTrendChart(trend, months);
-    });
-  });
 }
 
 // ── AI Summary ───────────────────────────────────────────────────────────────
@@ -552,11 +438,6 @@ function renderDashboard(data) {
   renderPmSurprises(data.analysis?.pmSurprises);
   renderQuestionCards(data.analysis);
   renderSegmentMatrix(data.analysis?.segmentMatrix);
-
-  // Trend chart
-  fullTrendData = data.trendChart;
-  renderTrendChart(fullTrendData, 12);
-  initDateRangeFilter(fullTrendData);
 
   // Methodology panel
   renderMethodologyPanel(data.methodology);
