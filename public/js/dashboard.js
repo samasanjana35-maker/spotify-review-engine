@@ -78,6 +78,11 @@ const SCAN_STAGES = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function stripDashes(text) {
+  if (!text) return text;
+  return text.replace(/\s*—\s*/g, ' ').replace(/\s*–\s*/g, ' ').trim();
+}
+
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-US', {
@@ -178,12 +183,12 @@ function renderSummary(analysis, totalRelevant) {
   const card = document.getElementById('summary-card');
   if (!analysis?.summary) { card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  document.getElementById('summary-text').textContent = analysis.summary;
+  document.getElementById('summary-text').textContent = stripDashes(analysis.summary);
   const analyzed = analysis.reviewCountAnalyzed || 0;
   const total    = totalRelevant || analyzed;
   const ofClause = total > analyzed ? ` of ${total.toLocaleString()} relevant` : '';
   document.getElementById('summary-meta').textContent =
-    `Analyzed ${analyzed.toLocaleString()}${ofClause} reviews using ${analysis.modelUsed || 'Claude Sonnet'}${ofClause ? ' — prioritized by keyword relevance score to manage API cost' : ''}`;
+    `Analyzed ${analyzed.toLocaleString()}${ofClause} reviews using ${analysis.modelUsed || 'Claude Sonnet'}${ofClause ? ', prioritized by keyword relevance score to manage API cost' : ''}`;
 }
 
 // ── UPGRADE 5: PM Surprises ──────────────────────────────────────────────────
@@ -199,7 +204,7 @@ function renderPmSurprises(pmSurprises) {
   list.innerHTML = surprises.map((s, i) => `
     <div style="display:flex;gap:12px;margin-bottom:${i < surprises.length - 1 ? '12px' : '0'};">
       <span style="color:#1DB954;font-weight:700;font-size:16px;flex-shrink:0;margin-top:1px;">${i + 1}.</span>
-      <p style="color:#e0e0e0;font-size:14px;line-height:1.6;margin:0;">${s}</p>
+      <p style="color:#e0e0e0;font-size:14px;line-height:1.6;margin:0;">${stripDashes(s)}</p>
     </div>
   `).join('');
   section.style.display = 'block';
@@ -254,7 +259,7 @@ function renderQuestionCards(analysis) {
         ${q.unexpectedSignal ? `
         <div style="padding:10px 12px;background:rgba(251,191,36,0.07);border-left:3px solid #fbbf24;border-radius:4px;">
           <div style="color:#fbbf24;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">⚡ Unexpected Signal</div>
-          <div style="color:#e0e0e0;font-size:13px;line-height:1.5;">${q.unexpectedSignal}</div>
+          <div style="color:#e0e0e0;font-size:13px;line-height:1.5;">${stripDashes(q.unexpectedSignal)}</div>
         </div>` : ''}
         ${q.segment ? `
         <div style="padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:4px;">
@@ -274,7 +279,7 @@ function renderQuestionCards(analysis) {
         </div>
       </div>
       <h3 class="q-title">${QUESTIONS[i - 1]}</h3>
-      <p class="q-answer">${q.answer || ''}</p>
+      <p class="q-answer">${stripDashes(q.answer || '')}</p>
       ${newFieldsHtml}
       <hr class="q-divider" />
       <h4 class="evidence-title">Evidence from real users</h4>
@@ -293,7 +298,7 @@ function renderQuestionCards(analysis) {
       ${q.opportunity || q.productIntervention ? `
       <div style="margin-top:20px;padding:14px 16px;background:rgba(29,185,84,0.08);border-left:3px solid #1DB954;border-radius:6px;">
         <div style="color:#1DB954;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px;">💡 Product Opportunity</div>
-        <div style="color:#e0e0e0;font-size:14px;line-height:1.6;">${q.productIntervention || q.opportunity}</div>
+        <div style="color:#e0e0e0;font-size:14px;line-height:1.6;">${stripDashes(q.productIntervention || q.opportunity)}</div>
       </div>` : ''}
     `;
     grid.appendChild(card);
