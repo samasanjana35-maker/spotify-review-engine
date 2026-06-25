@@ -4,7 +4,15 @@ const { isWithin90Days } = require('../utils/dateUtils');
 const logger = require('../utils/logger');
 
 const SUBREDDITS = [
-  'spotify', 'Music', 'WeAreTheMusicMakers', 'ListenToThis', 'ifyoulikeblank',
+  'spotify',
+  'truespotify',
+  'Music',
+  'listen',
+  'musicrecommendations',
+  'WeAreTheMusicMakers',
+  'ifyoulikeblank',
+  'applemusic',
+  'lastfm',
 ];
 
 const SEARCH_QUERIES = [
@@ -104,9 +112,9 @@ async function fetchSubredditJson(subreddit, query) {
       params: {
         q: query,
         restrict_sr: 1,
-        sort: 'new',
-        limit: 100,
-        t: 'month',
+        sort: 'top',
+        limit: 250,
+        t: 'year',
       },
       headers: {
         'User-Agent': process.env.REDDIT_USER_AGENT,
@@ -157,6 +165,65 @@ async function fetchSubredditQuery(subreddit, query, terms) {
   }
 }
 
+async function fetchTopComments(post) {
+  try {
+    const subreddit = post.metadata.subreddit;
+    const postId = post.external_id;
+    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json`;
+
+    const response = await axios.get(url, {
+      params: {
+        sort: 'top',
+        limit: 10,
+      },
+      headers: {
+        'User-Agent': process.env.REDDIT_USER_AGENT,
+        Accept: 'application/json',
+      },
+      timeout: 30000,
+    });
+
+    const children = response.data?.[1]?.data?.children || [];
+    const comments = [];
+    let index = 0;
+
+    for (const child of children) {
+      if (child.kind !== 't1') continue;
+
+      const body = child.data?.body || '';
+      const score = child.data?.score ?? 0;
+
+      if (!body.trim()) continue;
+      if (body === '[deleted]' || body === '[removed]') continue;
+      if (body.length < 30) continue;
+      if (score <= 0) continue;
+
+      comments.push({
+        source: 'reddit',
+        external_id: `${post.external_id}-c${index}`,
+        author: child.data.author,
+        rating: null,
+        title: `Comment on: ${post.title}`,
+        body,
+        url: post.url,
+        review_date: new Date(child.data.created_utc * 1000).toISOString(),
+        metadata: {
+          subreddit: post.metadata.subreddit,
+          score: child.data.score,
+          type: 'comment',
+        },
+      });
+
+      index += 1;
+      if (comments.length >= 3) break;
+    }
+
+    return comments;
+  } catch (err) {
+    return [];
+  }
+}
+
 async function scrapeReddit() {
   const results = [];
   const seen = new Set();
@@ -193,7 +260,26 @@ async function scrapeReddit() {
     }
   }
 
-  logger.info(`reddit: ${results.length} unique posts collected`);
+  const postCount = results.length;
+  const highScorePosts = results.filter((post) => (post.metadata?.score ?? 0) >= 5);
+
+  for (let i = 0; i < highScorePosts.length; i += 1) {
+    const comments = await fetchTopComments(highScorePosts[i]);
+
+    for (const comment of comments) {
+      if (!comment.external_id || seen.has(comment.external_id)) continue;
+
+      seen.add(comment.external_id);
+      results.push(comment);
+    }
+
+    if (i < highScorePosts.length - 1) {
+      await sleep(1000);
+    }
+  }
+
+  const commentCount = results.length - postCount;
+  logger.info(`reddit: ${results.length} total items (${postCount} posts + ${commentCount} comments)`);
   return results;
 }
 
