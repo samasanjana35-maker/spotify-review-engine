@@ -174,13 +174,16 @@ function renderSourceBars(sources) {
 
 // ── AI Summary ───────────────────────────────────────────────────────────────
 
-function renderSummary(analysis) {
+function renderSummary(analysis, totalRelevant) {
   const card = document.getElementById('summary-card');
   if (!analysis?.summary) { card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
   document.getElementById('summary-text').textContent = analysis.summary;
+  const analyzed = analysis.reviewCountAnalyzed || 0;
+  const total    = totalRelevant || analyzed;
+  const ofClause = total > analyzed ? ` of ${total.toLocaleString()} relevant` : '';
   document.getElementById('summary-meta').textContent =
-    `Analyzed ${analysis.reviewCountAnalyzed || 0} reviews using ${analysis.modelUsed || 'Claude Sonnet'}`;
+    `Analyzed ${analyzed.toLocaleString()}${ofClause} reviews using ${analysis.modelUsed || 'Claude Sonnet'}${ofClause ? ' — prioritized by keyword relevance score to manage API cost' : ''}`;
 }
 
 // ── UPGRADE 5: PM Surprises ──────────────────────────────────────────────────
@@ -434,7 +437,7 @@ function renderMethodologyPanel(methodology) {
 function renderDashboard(data) {
   renderStatsMeta(data);
   renderSourceBars(data.stats?.sources);
-  renderSummary(data.analysis);
+  renderSummary(data.analysis, data.stats?.totalFiltered);
   renderPmSurprises(data.analysis?.pmSurprises);
   renderQuestionCards(data.analysis);
   renderSegmentMatrix(data.analysis?.segmentMatrix);
