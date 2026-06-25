@@ -146,7 +146,7 @@ function buildMethodologyMeta(analysis, scrapeRun, dateRangeLabel) {
     reviewCountAnalyzed: analysis?.reviewCountAnalyzed || 0,
     confidenceNote:
       `Analysis based on ${analysis?.reviewCountAnalyzed || 0} relevant reviews. ` +
-      `Findings backed by fewer than 5 reviews are marked [LOW CONFIDENCE].`,
+      `Findings backed by fewer than 5 reviews are marked [LOW CONFIDENCE]. Segment tags (free user, premium user, etc.) are inferred from review language by the AI and have not been human-validated.`,
     lowConfidenceThreshold: 5,
   };
 }
