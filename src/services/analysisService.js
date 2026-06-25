@@ -1,9 +1,24 @@
+/**
+ * UPGRADE 5 + 6: Upgraded AI analysis service
+ *
+ * Prompt v2.0 changes:
+ * - System role: "find what is UNEXPECTED, COUNTERINTUITIVE, or UNDERREPORTED"
+ * - Each question now returns 5 structured fields instead of 1 answer blob:
+ *     mainFinding, quantification, unexpectedSignal, segment, productIntervention
+ * - New top-level sections:
+ *     pmSurprises    — 2-3 findings that would surprise a Spotify PM
+ *     segmentMatrix  — 6×6 matrix of user segment × pain point counts (Upgrade 6)
+ * - LOW CONFIDENCE: each question includes reviewsCount (integer) so the
+ *   frontend can badge findings backed by < 5 reviews
+ * - Backward compat: `answer` and `opportunity` are still populated so existing
+ *   cached UI cards continue to work
+ */
+
 const Anthropic = require('@anthropic-ai/sdk');
 const {
   getLatestAnalysis,
   getAnalysisForScrapeRun,
   getRelevantReviewsForRun,
-  getLatestScrapeRun,
   getLatestScrapeRunWithReviews,
   saveAnalysisResults,
 } = require('../db/queries');
@@ -13,18 +28,23 @@ const logger = require('../utils/logger');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PROMPT_VERSION = '2.0';
 
 const RESEARCH_QUESTIONS = [
   'Why do users struggle to discover new music?',
-  'What are the most common frustrations with recommendations?',
-  'What listening behaviors are users trying to achieve?',
-  'What causes users to repeatedly listen to the same content?',
-  'Which user segments experience different discovery challenges?',
-  'What unmet needs emerge consistently across reviews?',
+  'What are the most common frustrations with Spotify\'s recommendations?',
+  'What listening behaviors are users trying to achieve that the product currently blocks?',
+  'What causes users to repeatedly listen to the same content against their will?',
+  'Which user segments experience meaningfully different discovery challenges?',
+  'What unmet needs appear consistently that Spotify has NOT addressed in any recent update?',
 ];
 
 let lastCallWasCacheHit = false;
 let lastTokenUsage = null;
+
+// ---------------------------------------------------------------------------
+// Review preparation
+// ---------------------------------------------------------------------------
 
 function prepareReviewsForAnalysis(reviews) {
   const maxReviews = env.maxReviewsForAnalysis;
@@ -39,129 +59,199 @@ function prepareReviewsForAnalysis(reviews) {
     source: review.source,
     rating: review.rating,
     body: review.body,
+    review_date: review.review_date || null,
     matched_keywords: review.matched_keywords || [],
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Cache validation
+// ---------------------------------------------------------------------------
 
 function isCacheValid(analysis, scrapeRunId) {
   if (!analysis) return false;
   if (analysis.scrape_run_id !== scrapeRunId) return false;
 
-  // If cached analysis doesn't have opportunity fields, force regeneration
-  if (analysis.q1 && !analysis.q1.opportunity) {
-    return false;
-  }
+  // Force regeneration if cached analysis is on old prompt version
+  if (analysis.prompt_version !== PROMPT_VERSION) return false;
+  if (analysis.q1 && !analysis.q1.mainFinding) return false;
 
   const createdAt = new Date(analysis.created_at).getTime();
-  const age = Date.now() - createdAt;
-  return age < CACHE_TTL_MS;
+  return (Date.now() - createdAt) < CACHE_TTL_MS;
 }
 
 function formatCachedResult(analysis) {
   return {
     scrapeRunId: analysis.scrape_run_id,
-    q1: analysis.q1,
-    q2: analysis.q2,
-    q3: analysis.q3,
-    q4: analysis.q4,
-    q5: analysis.q5,
-    q6: analysis.q6,
+    q1: analysis.q1, q2: analysis.q2, q3: analysis.q3,
+    q4: analysis.q4, q5: analysis.q5, q6: analysis.q6,
     summary: analysis.summary,
+    pmSurprises: analysis.pm_surprises || [],
+    segmentMatrix: analysis.segment_matrix || null,
     competitiveIntel: analysis.q6?.competitiveIntel || null,
     reviewCountAnalyzed: analysis.review_count_analyzed,
     modelUsed: analysis.model_used,
+    promptVersion: analysis.prompt_version,
     cached: true,
     createdAt: analysis.created_at,
   };
 }
 
+// ---------------------------------------------------------------------------
+// UPGRADE 5: New prompt — surfaces unexpected, counterintuitive findings
+// ---------------------------------------------------------------------------
+
 function buildAnalysisPrompt(formattedReviews) {
   const reviewsJson = JSON.stringify(formattedReviews, null, 2);
 
-  return `You are a music discovery research analyst. Analyze the following ${formattedReviews.length} user reviews about Spotify and answer 6 research questions.
+  const systemPrompt = `You are a senior product researcher analyzing user reviews for Spotify.
+Your job is NOT to confirm known problems. Your job is to find what is UNEXPECTED,
+COUNTERINTUITIVE, or UNDERREPORTED in this data. Prioritize minority signals that contradict
+the mainstream narrative. Flag anything that would surprise a PM who has been working on
+Spotify for 3 years.`;
+
+  const userPrompt = `Here are ${formattedReviews.length} user reviews about Spotify's music
+discovery and recommendation experience.
 
 REVIEWS:
 ${reviewsJson}
 
-RESEARCH QUESTIONS:
-1. ${RESEARCH_QUESTIONS[0]}
-2. ${RESEARCH_QUESTIONS[1]}
-3. ${RESEARCH_QUESTIONS[2]}
-4. ${RESEARCH_QUESTIONS[3]}
-5. ${RESEARCH_QUESTIONS[4]}
-6. ${RESEARCH_QUESTIONS[5]}
+Answer each of the following 6 questions. For EACH answer provide ALL of these fields:
 
-INSTRUCTIONS:
-- Base every answer strictly on evidence from the reviews provided.
-- For each question, include at least 3 direct quotes from the reviews as evidence.
-- Assign a severity rating (high, medium, or low) based on how frequently and intensely the issue appears.
-- Return ONLY valid JSON with no markdown fences or extra text.
+1. mainFinding — the main finding in 2 sentences max
+2. quantification — exact count: "X of ${formattedReviews.length} reviews (Z%) mention this"
+   (count carefully by reading each review individually)
+3. reviewsCount — the integer X from quantification (used for confidence badges)
+4. unexpectedSignal — ONE finding that contradicts assumptions or is small but growing
+5. segment — which user type feels this most acutely (free vs paid, new vs long-term,
+   genre preference, mobile vs desktop if detectable)
+6. productIntervention — ONE specific product feature tied directly to evidence. NOT a
+   generic UX fix. Name the feature and describe its exact mechanism in 1-2 sentences.
+   Example level of specificity: "Add a Taste Reset button that wipes listening history so
+   the algorithm starts fresh" or "Launch an AI Music Filter toggle in settings that removes
+   all AI-generated tracks from every playlist and radio station."
+7. evidence — 3 direct quotes from reviews (strings)
+8. severity — "high", "medium", or "low" based on frequency and intensity
+9. opportunity — same as productIntervention (kept for backward compatibility)
+10. answer — combine mainFinding + quantification into a 3-4 sentence summary paragraph
 
-OPPORTUNITY REQUIREMENT: For every question Q1–Q6, add an "opportunity" field in your JSON response. This must be ONE specific, concrete product feature Spotify could build to fix the problem you identified. Do NOT write vague suggestions like "improve the algorithm." Write the feature name and what it does in 1–2 sentences. Examples of the level of specificity required: "Add a Taste Reset button that wipes listening history so the algorithm starts fresh" or "Launch an AI Music Filter toggle in settings that removes all AI-generated tracks from every playlist and radio station."
+THE 6 QUESTIONS:
+Q1: ${RESEARCH_QUESTIONS[0]}
+Q2: ${RESEARCH_QUESTIONS[1]}
+Q3: ${RESEARCH_QUESTIONS[2]}
+Q4: ${RESEARCH_QUESTIONS[3]}
+Q5: ${RESEARCH_QUESTIONS[4]}
+Q6: ${RESEARCH_QUESTIONS[5]}
 
-QUANTIFICATION REQUIREMENT: You are already including review counts in your answers — continue doing this. For every question, your answer must include "X of Y reviews (Z%)" where X is the number of reviews that explicitly mention the theme, Y is the total number of reviews provided, and Z is X/Y × 100 rounded to one decimal place. Count carefully by reading each review individually.
+COMPETITIVE INTEL: Count how many reviews explicitly name each competitor:
+Apple Music, Tidal, Qobuz, Deezer, YouTube Music, Last.fm. Set counts to 0 if none.
 
-COMPETITIVE INTEL REQUIREMENT: Read every review and count how many times each of these competitors is mentioned by name: Apple Music, Tidal, Qobuz, Deezer, YouTube Music, Last.fm. A mention means the review explicitly names that service. Put the counts in the "competitiveIntel" object in your JSON. Set counts to 0 if not mentioned.
+UPGRADE 6 — SEGMENT MATRIX: Tag each theme intersection. Estimate the number of reviews
+that represent each cell. Use these exact row/column keys:
 
-Return your response as valid JSON with this exact structure:
+Rows (user segments):
+  free_user, premium_user, power_user, nostalgia_listener, genre_diverse, new_user
+
+Columns (pain points):
+  repetitive_recs, no_playback_control, ai_content_intrusion, shuffle_dysfunction,
+  filter_bubble, lack_of_transparency
+
+Return the matrix as nested JSON: segmentMatrix[segment][painPoint] = count (integer).
+Omit cells where count is 0.
+
+PM SURPRISES: After answering all 6 questions, add a "pmSurprises" array with 2-3 findings
+from this data that are counterintuitive or that a PM would NOT expect. Each surprise is a
+1-2 sentence string. Be specific — reference actual patterns you saw in the reviews.
+
+Return ONLY valid JSON with NO markdown fences. Use this exact structure:
+
 {
-  "q1": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "q2": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "q3": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "q4": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "q5": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "q6": { "answer": "...", "evidence": ["quote1", "quote2", "quote3"], "severity": "high/medium/low", "opportunity": "..." },
-  "competitiveIntel": {
-    "apple_music": 0,
-    "tidal": 0,
-    "qobuz": 0,
-    "deezer": 0,
-    "youtube_music": 0,
-    "lastfm": 0
+  "q1": {
+    "mainFinding": "...",
+    "quantification": "X of ${formattedReviews.length} reviews (Z%)",
+    "reviewsCount": 0,
+    "unexpectedSignal": "...",
+    "segment": "...",
+    "productIntervention": "...",
+    "evidence": ["quote1", "quote2", "quote3"],
+    "severity": "high",
+    "opportunity": "...",
+    "answer": "..."
   },
+  "q2": { /* same structure */ },
+  "q3": { /* same structure */ },
+  "q4": { /* same structure */ },
+  "q5": { /* same structure */ },
+  "q6": { /* same structure */ },
+  "competitiveIntel": {
+    "apple_music": 0, "tidal": 0, "qobuz": 0,
+    "deezer": 0, "youtube_music": 0, "lastfm": 0
+  },
+  "segmentMatrix": {
+    "free_user": { "repetitive_recs": 0 },
+    "premium_user": {}
+  },
+  "pmSurprises": ["surprise 1", "surprise 2", "surprise 3"],
   "summary": "2-3 sentence overall summary of the main discovery problem",
   "reviewCountAnalyzed": ${formattedReviews.length}
 }`;
+
+  return { systemPrompt, userPrompt };
 }
+
+// ---------------------------------------------------------------------------
+// Parse & validate Claude's JSON response
+// ---------------------------------------------------------------------------
 
 function parseClaudeResponse(text) {
   let cleaned = text.trim();
 
   const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    cleaned = fenceMatch[1].trim();
-  }
+  if (fenceMatch) cleaned = fenceMatch[1].trim();
 
   const parsed = JSON.parse(cleaned);
 
   for (const key of ['q1', 'q2', 'q3', 'q4', 'q5', 'q6']) {
     if (!parsed[key] || !parsed[key].answer) {
-      throw new Error(`Claude response missing required field: ${key}`);
+      throw new Error(`Claude response missing required field: ${key}.answer`);
+    }
+    // Back-fill opportunity from productIntervention if only one is present
+    if (parsed[key].productIntervention && !parsed[key].opportunity) {
+      parsed[key].opportunity = parsed[key].productIntervention;
+    }
+    if (parsed[key].opportunity && !parsed[key].productIntervention) {
+      parsed[key].productIntervention = parsed[key].opportunity;
+    }
+    // Ensure reviewsCount is an integer
+    if (typeof parsed[key].reviewsCount !== 'number') {
+      // Try to parse from quantification string e.g. "23 of 150 reviews"
+      const m = (parsed[key].quantification || '').match(/^(\d+)\s+of/);
+      parsed[key].reviewsCount = m ? parseInt(m[1], 10) : 0;
     }
   }
 
-  if (!parsed.summary) {
-    throw new Error('Claude response missing required field: summary');
-  }
+  if (!parsed.summary) throw new Error('Claude response missing required field: summary');
 
   return parsed;
 }
 
-async function callClaude(prompt) {
-  const model = process.env.CLAUDE_MODEL || env.claudeModel;
+// ---------------------------------------------------------------------------
+// Claude API call
+// ---------------------------------------------------------------------------
 
-  logger.info(`Calling Claude API (model=${model}, reviews in prompt)`);
+async function callClaude(systemPrompt, userPrompt) {
+  const model = process.env.CLAUDE_MODEL || env.claudeModel;
+  logger.info(`Calling Claude API (model=${model}, prompt_version=${PROMPT_VERSION})`);
 
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 6000,  // increased to handle larger structured response
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }],
   });
 
   const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock || !textBlock.text) {
-    throw new Error('Claude returned an empty response');
-  }
+  if (!textBlock || !textBlock.text) throw new Error('Claude returned an empty response');
 
   lastTokenUsage = {
     inputTokens: response.usage?.input_tokens || 0,
@@ -171,29 +261,28 @@ async function callClaude(prompt) {
   return parseClaudeResponse(textBlock.text);
 }
 
+// ---------------------------------------------------------------------------
+// Main analysis orchestration
+// ---------------------------------------------------------------------------
+
 async function analyzeReviews(scrapeRunId) {
   lastCallWasCacheHit = false;
 
   const latestAnalysis = await getLatestAnalysis();
-  if (latestAnalysis && latestAnalysis.q1 && !latestAnalysis.q1.opportunity) {
-    logger.info('Cached analysis missing opportunity fields — forcing regeneration');
-  } else if (isCacheValid(latestAnalysis, scrapeRunId)) {
-    logger.info(`Returning cached analysis for scrape run ${scrapeRunId} (< 24h old)`);
+  if (isCacheValid(latestAnalysis, scrapeRunId)) {
+    logger.info(`Returning cached analysis for scrape run ${scrapeRunId} (prompt_version=${PROMPT_VERSION})`);
     lastCallWasCacheHit = true;
     return formatCachedResult(latestAnalysis);
   }
 
   const runAnalysis = await getAnalysisForScrapeRun(scrapeRunId);
-  if (runAnalysis && runAnalysis.q1 && !runAnalysis.q1.opportunity) {
-    logger.info('Run analysis missing opportunity fields — forcing regeneration');
-  } else if (isCacheValid(runAnalysis, scrapeRunId)) {
-    logger.info(`Returning cached analysis for scrape run ${scrapeRunId} (< 24h old)`);
+  if (isCacheValid(runAnalysis, scrapeRunId)) {
+    logger.info(`Returning cached run analysis for ${scrapeRunId}`);
     lastCallWasCacheHit = true;
     return formatCachedResult(runAnalysis);
   }
 
   const reviews = await getRelevantReviewsForRun(scrapeRunId);
-
   if (!reviews || reviews.length === 0) {
     const err = new Error('No relevant reviews found for this scrape run. Run a scrape first.');
     err.statusCode = 400;
@@ -201,11 +290,11 @@ async function analyzeReviews(scrapeRunId) {
   }
 
   const formattedReviews = prepareReviewsForAnalysis(reviews);
-  const prompt = buildAnalysisPrompt(formattedReviews);
+  const { systemPrompt, userPrompt } = buildAnalysisPrompt(formattedReviews);
 
   let results;
   try {
-    results = await callClaude(prompt);
+    results = await callClaude(systemPrompt, userPrompt);
   } catch (err) {
     logger.error(`Claude API error: ${err.message}`);
     throw err;
@@ -229,31 +318,34 @@ async function analyzeReviews(scrapeRunId) {
     summary: results.summary,
     reviewCountAnalyzed: results.reviewCountAnalyzed,
     modelUsed: model,
+    pmSurprises: results.pmSurprises || [],
+    segmentMatrix: results.segmentMatrix || null,
+    promptVersion: PROMPT_VERSION,
   });
 
-  logger.info(`Analysis saved for scrape run ${scrapeRunId} (${results.reviewCountAnalyzed} reviews)`);
+  logger.info(
+    `Analysis saved for scrape run ${scrapeRunId} ` +
+    `(${results.reviewCountAnalyzed} reviews, prompt_version=${PROMPT_VERSION})`
+  );
 
   return {
     scrapeRunId,
-    q1: saved.q1,
-    q2: saved.q2,
-    q3: saved.q3,
-    q4: saved.q4,
-    q5: saved.q5,
-    q6: saved.q6,
+    q1: saved.q1, q2: saved.q2, q3: saved.q3,
+    q4: saved.q4, q5: saved.q5, q6: saved.q6,
     summary: saved.summary,
+    pmSurprises: saved.pm_surprises || results.pmSurprises || [],
+    segmentMatrix: saved.segment_matrix || results.segmentMatrix || null,
     competitiveIntel: results.competitiveIntel || saved.q6?.competitiveIntel || null,
     reviewCountAnalyzed: saved.review_count_analyzed,
     modelUsed: saved.model_used,
+    promptVersion: saved.prompt_version || PROMPT_VERSION,
     cached: false,
     createdAt: saved.created_at,
   };
 }
 
 async function getOrRunAnalysis(scrapeRunId) {
-  if (scrapeRunId) {
-    return analyzeReviews(scrapeRunId);
-  }
+  if (scrapeRunId) return analyzeReviews(scrapeRunId);
 
   const latestRun = await getLatestScrapeRunWithReviews();
   if (!latestRun) {
@@ -265,20 +357,13 @@ async function getOrRunAnalysis(scrapeRunId) {
   return analyzeReviews(latestRun.id);
 }
 
-function wasLastCallCacheHit() {
-  return lastCallWasCacheHit;
-}
-
-function getLastTokenUsage() {
-  return lastTokenUsage;
-}
+function wasLastCallCacheHit() { return lastCallWasCacheHit; }
+function getLastTokenUsage() { return lastTokenUsage; }
 
 function estimateCost(usage) {
   if (!usage) return 0;
-  const inputCostPer1M = 3.0;
-  const outputCostPer1M = 15.0;
-  const inputCost = (usage.inputTokens / 1_000_000) * inputCostPer1M;
-  const outputCost = (usage.outputTokens / 1_000_000) * outputCostPer1M;
+  const inputCost = (usage.inputTokens / 1_000_000) * 3.0;
+  const outputCost = (usage.outputTokens / 1_000_000) * 15.0;
   return inputCost + outputCost;
 }
 
@@ -290,4 +375,5 @@ module.exports = {
   getLastTokenUsage,
   estimateCost,
   RESEARCH_QUESTIONS,
+  PROMPT_VERSION,
 };

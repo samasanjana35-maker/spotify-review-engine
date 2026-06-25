@@ -10,6 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
+  <!-- UPGRADE 4: Chart.js for trend chart -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
   <div id="error-banner" class="error-banner hidden"></div>
@@ -24,10 +26,10 @@
       </div>
       <div class="navbar-titles">
         <div class="brand-name">
-          <span class="brand-spotify" style="font-family: 'circular', 'Montserrat', sans-serif; font-weight: 900; font-size: 1.6rem; letter-spacing: -0.5px; color: white;">Spotify</span>
-          <span class="brand-radar" style="font-family: 'circular', 'Montserrat', sans-serif; font-weight: 900; font-size: 1.6rem; letter-spacing: -0.5px; color: #1DB954; margin-left: 8px;">Radar</span>
+          <span class="brand-spotify" style="font-family:'circular','Montserrat',sans-serif;font-weight:900;font-size:1.6rem;letter-spacing:-0.5px;color:white;">Spotify</span>
+          <span class="brand-radar" style="font-family:'circular','Montserrat',sans-serif;font-weight:900;font-size:1.6rem;letter-spacing:-0.5px;color:#1DB954;margin-left:8px;">Radar</span>
         </div>
-        <div class="navbar-subtitle" style="font-size: 0.75rem; color: #b3b3b3; letter-spacing: 0.5px;">AI Powered User Intelligence Platform</div>
+        <div class="navbar-subtitle" style="font-size:0.75rem;color:#b3b3b3;letter-spacing:0.5px;">AI Powered User Intelligence Platform</div>
       </div>
     </div>
     <div class="navbar-right">
@@ -38,23 +40,21 @@
   <main class="container">
     <div id="loading-skeleton" class="loading-skeleton">
       <div class="skeleton-stats shimmer-block">
-        <div class="shimmer-card"></div>
-        <div class="shimmer-card"></div>
-        <div class="shimmer-card"></div>
-        <div class="shimmer-card"></div>
+        <div class="shimmer-card"></div><div class="shimmer-card"></div>
+        <div class="shimmer-card"></div><div class="shimmer-card"></div>
       </div>
       <div class="skeleton-btn shimmer-block"></div>
       <div class="skeleton-sources shimmer-block"></div>
       <div class="skeleton-summary shimmer-block"></div>
       <div class="skeleton-grid shimmer-block">
-        <div class="shimmer-card tall"></div>
-        <div class="shimmer-card tall"></div>
-        <div class="shimmer-card tall"></div>
-        <div class="shimmer-card tall"></div>
+        <div class="shimmer-card tall"></div><div class="shimmer-card tall"></div>
+        <div class="shimmer-card tall"></div><div class="shimmer-card tall"></div>
       </div>
     </div>
 
     <div id="dashboard-content" class="hidden">
+
+      <!-- ── Hero stats ── -->
       <section class="hero-stats">
         <div class="stat-card glass-card">
           <span class="stat-icon">📊</span>
@@ -73,27 +73,49 @@
         </div>
         <div class="stat-card glass-card">
           <span class="stat-icon">🔍</span>
-          <div class="stat-number" id="stat-keywords" data-value="14">14</div>
+          <div class="stat-number" id="stat-keywords" data-value="0">0</div>
           <div class="stat-label">Keywords Tracked</div>
         </div>
       </section>
 
+      <!-- ── Scrape button ── -->
       <div class="scrape-action-wrap">
         <button id="scrape-btn" class="scrape-btn btn-pulse" type="button">Scan Reviews</button>
-        <div id="scan-progress-wrap" class="scan-progress-wrap hidden" style="margin-top: 0.75rem;">
-          <div class="scan-progress-track" style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
-            <div id="scan-progress-fill" class="scan-progress-fill" style="width: 0%; height: 100%; background: #1DB954; border-radius: 4px; transition: width 0.6s ease-out;"></div>
+        <div id="scan-progress-wrap" class="scan-progress-wrap hidden" style="margin-top:0.75rem;">
+          <div class="scan-progress-track" style="width:100%;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;">
+            <div id="scan-progress-fill" class="scan-progress-fill" style="width:0%;height:100%;background:#1DB954;border-radius:4px;transition:width 0.6s ease-out;"></div>
           </div>
-          <p id="scan-progress-status" class="scan-progress-status" style="margin: 0.5rem 0 0; font-size: 0.85rem; color: #b3b3b3; text-align: center;">Connecting to sources...</p>
+          <p id="scan-progress-status" class="scan-progress-status" style="margin:0.5rem 0 0;font-size:0.85rem;color:#b3b3b3;text-align:center;">Connecting to sources...</p>
         </div>
       </div>
 
+      <!-- ── Review sources ── -->
       <section class="source-section glass-card">
         <h2 class="section-title">Review Sources</h2>
         <p class="source-legend">Relevant / Total</p>
         <div id="source-bars" class="source-bars"></div>
       </section>
 
+      <!-- ── UPGRADE 4: Trend chart ── -->
+      <section id="trend-section" class="glass-card" style="margin-top:24px;padding:24px 28px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;">
+          <div>
+            <h2 class="section-title" style="margin:0 0 4px;">Review Volume Trend</h2>
+            <p style="color:#b3b3b3;font-size:13px;margin:0;">Relevant reviews per month, by source</p>
+          </div>
+          <div id="date-range-filter" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="range-btn active" data-months="12">Last 12 mo</button>
+            <button class="range-btn" data-months="6">Last 6 mo</button>
+            <button class="range-btn" data-months="3">Last 3 mo</button>
+            <button class="range-btn" data-months="0">All time</button>
+          </div>
+        </div>
+        <div style="position:relative;height:220px;">
+          <canvas id="trend-chart"></canvas>
+        </div>
+      </section>
+
+      <!-- ── AI summary ── -->
       <section id="summary-card" class="summary-card glass-card">
         <span class="summary-quote-mark" aria-hidden="true">"</span>
         <h2 class="summary-title"><span class="green-dot">●</span> AI Research Summary</h2>
@@ -101,19 +123,60 @@
         <p id="summary-meta" class="summary-meta"></p>
       </section>
 
+      <!-- ── UPGRADE 5: PM Surprises ── -->
+      <section id="pm-surprises-section" style="display:none;margin-top:24px;margin-bottom:8px;">
+        <div style="background:linear-gradient(135deg,rgba(29,185,84,0.08),rgba(29,185,84,0.03));border:1px solid rgba(29,185,84,0.25);border-radius:12px;padding:20px 24px;">
+          <h2 style="color:#1DB954;font-size:16px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin:0 0 14px;">⚡ What Would Surprise a Spotify PM</h2>
+          <div id="pm-surprises-list"></div>
+        </div>
+      </section>
+
+      <!-- ── AI findings ── -->
       <section class="questions-section">
         <h2 class="section-title">AI Findings</h2>
         <div id="questions-grid" class="questions-grid"></div>
       </section>
 
-      <div id="competitive-intel-section" style="display:none; margin-top:32px; margin-bottom:32px;">
-        <h2 style="color:#ffffff; font-size:22px; font-weight:700; margin-bottom:8px;">Competitive Intelligence</h2>
-        <p style="color:#b3b3b3; font-size:14px; margin-bottom:20px;">Competitor platforms mentioned in user reviews</p>
-        <div style="background:#181818; border-radius:12px; padding:8px 24px;">
+      <!-- ── UPGRADE 6: Segment × Need matrix ── -->
+      <section id="segment-matrix-section" style="display:none;margin-top:32px;margin-bottom:32px;">
+        <h2 style="color:#ffffff;font-size:22px;font-weight:700;margin-bottom:6px;">Segment Intelligence</h2>
+        <p style="color:#b3b3b3;font-size:14px;margin-bottom:20px;">
+          Number of reviews at each user segment × pain point intersection.
+          <span style="margin-left:8px;">
+            <span class="matrix-legend" style="background:#1a3a1a;color:#4ade80;">0</span>
+            <span class="matrix-legend" style="background:#3a3000;color:#fbbf24;">1–3</span>
+            <span class="matrix-legend" style="background:#3a1a00;color:#fb923c;">4–7</span>
+            <span class="matrix-legend" style="background:#3a0000;color:#f87171;">8+</span>
+          </span>
+        </p>
+        <div style="overflow-x:auto;">
+          <table id="segment-matrix-table" class="segment-matrix"></table>
+        </div>
+      </section>
+
+      <!-- ── Competitive intel ── -->
+      <div id="competitive-intel-section" style="display:none;margin-top:32px;margin-bottom:32px;">
+        <h2 style="color:#ffffff;font-size:22px;font-weight:700;margin-bottom:8px;">Competitive Intelligence</h2>
+        <p style="color:#b3b3b3;font-size:14px;margin-bottom:20px;">Competitor platforms mentioned in user reviews</p>
+        <div style="background:#181818;border-radius:12px;padding:8px 24px;">
           <div id="competitive-intel-list"></div>
         </div>
       </div>
-    </div>
+
+      <!-- ── UPGRADE 7: Methodology transparency panel ── -->
+      <section id="methodology-section" style="margin-top:32px;margin-bottom:48px;">
+        <details id="methodology-details">
+          <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:16px 20px;background:#181818;border-radius:10px;color:#b3b3b3;font-size:14px;font-weight:600;letter-spacing:0.3px;user-select:none;">
+            <span id="methodology-arrow" style="transition:transform 0.2s;font-size:12px;">▶</span>
+            <span>How This Works — Methodology &amp; Data Transparency</span>
+          </summary>
+          <div id="methodology-body" style="background:#111;border:1px solid #282828;border-top:none;border-radius:0 0 10px 10px;padding:20px 24px;">
+            <div id="methodology-content"></div>
+          </div>
+        </details>
+      </section>
+
+    </div><!-- /dashboard-content -->
   </main>
 
   <footer class="footer">
