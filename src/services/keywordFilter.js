@@ -1,5 +1,6 @@
 const { KEYWORDS } = require('../config/constants');
 const logger = require('../utils/logger');
+const DEBUG = process.env.FILTER_DEBUG === 'true';
 
 function findMatchedKeywords(text) {
   const lower = text.toLowerCase();
@@ -13,6 +14,11 @@ function filterReviews(reviewsArray) {
     const searchable = `${review.title || ''} ${review.body || ''}`;
     const matched = findMatchedKeywords(searchable);
     const is_relevant = matched.length > 0;
+
+    if (!is_relevant && DEBUG) {
+      const excerpt = searchable.slice(0, 120).replace(/\s+/g, ' ').trim();
+      logger.debug(`[FILTER REJECT] source=${review.source} excerpt="${excerpt}"`);
+    }
 
     return {
       ...review,
