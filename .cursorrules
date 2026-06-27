@@ -1,0 +1,13 @@
+You are working on Spotify Radar — a Node.js/Express app deployed on Railway with a Supabase (PostgreSQL) database.
+
+Rules:
+- Never remove the 350 review cap (MAX_REVIEWS_FOR_ANALYSIS). It controls Claude API costs.
+- Never modify the keyword filter without updating the keyword count in the UI.
+- Never log or store raw review text with user PII — reviews are public data only.
+- Always keep the competitor-only exclusion filter in keywordFilter.js.
+- Do not add new npm packages without checking Railway compatibility first.
+- Do not change the Claude model from claude-sonnet-4-6 without explicit instruction.
+- The Bluesky 100% relevance rate is a known architectural limitation — do not file it as a bug.
+- Keep stripDashes() applied to all AI-rendered text fields.
+- All new scraper sources must go through the keyword filter before being stored.
+- Do not expose the Supabase connection string or Claude API key in any frontend file.
